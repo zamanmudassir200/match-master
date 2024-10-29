@@ -1,136 +1,309 @@
-import React, { useState, useEffect } from 'react';
-import Grid from './assets/components/Grid';
+import React, { useState, useEffect } from "react";
+import "./App.css";
+import Grid from "./assets/components/Grid";
 
-function App() {
+const App = () => {
   const [grid, setGrid] = useState([]);
   const [score, setScore] = useState(0);
   const [moves, setMoves] = useState(10);
-  const [time, setTime] = useState(60);
-  const [gameMode, setGameMode] = useState('moves');
-  const [hintUsed, setHintUsed] = useState(false); // Track if hint has been used
-  const [busterUsed, setBusterUsed] = useState(false); // Track if buster has been used
-  const symbols = ["*", "|", "/", "@", "$"];
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [gameOver, setGameOver] = useState(false);
+  const [hintCount, setHintCount] = useState(0);
+  const [lastSwap, setLastSwap] = useState(null);
+  const [gameMode, setGameMode] = useState("moves");
+  const [targetScore, setTargetScore] = useState(100);
 
-  // const initializeGrid = () => {
-  //   const newGrid = Array.from({ length: 8}, () =>
-  //     Array.from({ length: 8 }, () => symbols[Math.floor(Math.random() * symbols.length)])
-  //   );
-  //   setGrid(newGrid);
-  // };
-  const initializeGrid = () => {
-    let newGrid;
-  
-    // Helper function to check for matches
-    const hasMatches = (grid) => {
-      for (let r = 0; r < grid.length; r++) {
-        for (let c = 0; c < grid[r].length - 2; c++) {
-          if (grid[r][c] !== ' ' && grid[r][c] === grid[r][c + 1] && grid[r][c] === grid[r][c + 2]) {
-            return true;
-          }
-        }
-      }
-  
-      for (let c = 0; c < grid[0].length; c++) {
-        for (let r = 0; r < grid.length - 2; r++) {
-          if (grid[r][c] !== ' ' && grid[r][c] === grid[r + 1][c] && grid[r][c] === grid[r + 2][c]) {
-            return true;
-          }
-        }
-      }
-  
-      return false;
-    };
-  
-    // Generate new grids until one without matches is created
-    do {
-      newGrid = Array.from({ length: 8 }, () =>
-        Array.from({ length: 8 }, () => symbols[Math.floor(Math.random() * symbols.length)])
-      );
-    } while (hasMatches(newGrid));
-  
-    setGrid(newGrid);
-  };
-  
+  const elementTypes = ["🍎", "🍌", "🍇", "🍉", "🍒", "🍍"];
+  const bombSymbol = "💣";
+  const rocketSymbol = "🚀";
 
   useEffect(() => {
-    initializeGrid();
+    resetGame();
   }, []);
 
-  useEffect(() => {
-    if (gameMode === 'time' && time > 0) {
-      const timer = setInterval(() => setTime((prev) => prev - 1), 1000);
-      return () => clearInterval(timer);
-    }
-    if (time === 0 || moves === 0) endGame();
-  }, [time, moves]);
-
-  const endGame = () => {
-    alert(`Game Over! Your Score: ${score}`);
-    initializeGrid();
+  const resetGame = () => {
+    setGrid(generateNonMatchingGrid());
     setScore(0);
     setMoves(10);
-    setTime(60);
-    setHintUsed(false); // Reset hint usage
-    setBusterUsed(false); // Reset buster usage
+    setTimeLeft(60);
+    setGameOver(false);
+    setHintCount(0);
+    setLastSwap(null);
+  };
+  const startGame = () => {
+    if (gameMode === "time") {
+      setTimeLeft(60); // Start with 60 seconds
+      const timer = setInterval(() => {
+        setTimeLeft((prevTime) => {
+          if (prevTime <= 1) {
+            clearInterval(timer);
+            setGameOver(true);
+            return 0;
+          }
+          return prevTime - 1;
+        });
+      }, 1000);
+    }
+    resetGame();
   };
 
-  const useHint = () => {
-    if (!hintUsed) {
-      let foundHint = false;
-      for (let r = 0; r < grid.length; r++) {
-        for (let c = 0; c < grid[r].length; c++) {
-          // Try swapping adjacent elements and checking for matches
-          if (!foundHint && c + 1 < grid[r].length && grid[r][c] === grid[r][c + 1]) {
-            alert(`Hint: Try swapping at (${r},${c})`);
-            foundHint = true;
-            break;
+  // Utility function to check if swapping two elements will result in a match
+  const canSwapAndMatch = (fromRow, fromCol, toRow, toCol) => {
+    let tempGrid = [...grid];
+    [tempGrid[fromRow][fromCol], tempGrid[toRow][toCol]] = [
+      tempGrid[toRow][toCol],
+      tempGrid[fromRow][fromCol],
+    ];
+    return hasMatches(tempGrid);
+  };
+
+  const generateGrid = () => {
+    let newGrid = [];
+    for (let row = 0; row < 8; row++) {
+      let currentRow = [];
+      for (let col = 0; col < 8; col++) {
+        const randomElement =
+          elementTypes[Math.floor(Math.random() * elementTypes.length)];
+        currentRow.push(randomElement);
+      }
+      newGrid.push(currentRow);
+    }
+    return newGrid;
+  };
+
+  const generateNonMatchingGrid = () => {
+    let newGrid;
+    do {
+      newGrid = generateGrid();
+    } while (hasMatches(newGrid));
+    return newGrid;
+  };
+
+  const hasMatches = (grid) => {
+    // Check for horizontal and vertical matches
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 6; col++) {
+        if (
+          grid[row][col] === grid[row][col + 1] &&
+          grid[row][col] === grid[row][col + 2]
+        ) {
+          return true;
+        }
+      }
+    }
+    for (let col = 0; col < 8; col++) {
+      for (let row = 0; row < 6; row++) {
+        if (
+          grid[row][col] === grid[row + 1][col] &&
+          grid[row][col] === grid[row + 2][col]
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  const updateGridAndCheckMatches = (newGrid) => {
+    setGrid(newGrid);
+    checkForMatches(newGrid);
+  };
+
+  const handleSwap = (fromRow, fromCol, toRow, toCol) => {
+    let newGrid = [...grid];
+    [newGrid[fromRow][fromCol], newGrid[toRow][toCol]] = [
+      newGrid[toRow][toCol],
+      newGrid[fromRow][fromCol],
+    ];
+    // Save last swap for reverting if no matches are found
+    setLastSwap({ fromRow, fromCol, toRow, toCol });
+    updateGridAndCheckMatches(newGrid);
+  };
+
+  const checkForMatches = (grid) => {
+    let matchesFound = false;
+
+    // Check horizontal matches
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 6; col++) {
+        let matchLength = 1;
+
+        while (
+          col + matchLength < 8 &&
+          grid[row][col] === grid[row][col + matchLength]
+        ) {
+          matchLength++;
+        }
+
+        if (matchLength >= 3) {
+          matchesFound = true;
+          setScore((prevScore) => prevScore + 3 * (matchLength === 4 ? 2 : 1));
+
+          for (let i = 0; i < matchLength; i++) {
+            grid[row][col + i] = matchLength === 5 ? bombSymbol : null;
           }
         }
-        if (foundHint) break;
-      }
-      setHintUsed(true);
-    } else {
-      alert('You have already used your hint!');
-    }
-  };
-  
 
-  const useBuster = () => {
-    if (!busterUsed) {
-      const newGrid = [...grid];
-      const randomRow = Math.floor(Math.random() * 8);
-  
-      // Clear a random row
-      for (let c = 0; c < newGrid[0].length; c++) {
-        newGrid[randomRow][c] = ' ';
+        col += matchLength - 1;
       }
-  
-      // Clear the same column
-      for (let r = 0; r < newGrid.length; r++) {
-        newGrid[r][randomRow] = ' ';
+    }
+
+    // Check vertical matches
+    for (let col = 0; col < 8; col++) {
+      for (let row = 0; row < 6; row++) {
+        let matchLength = 1;
+
+        while (
+          row + matchLength < 8 &&
+          grid[row][col] === grid[row + matchLength][col]
+        ) {
+          matchLength++;
+        }
+
+        if (matchLength >= 3) {
+          matchesFound = true;
+          setScore((prevScore) => prevScore + 3 * (matchLength === 4 ? 2 : 1));
+
+          for (let i = 0; i < matchLength; i++) {
+            grid[row + i][col] = matchLength === 5 ? bombSymbol : null;
+          }
+        }
+
+        row += matchLength - 1;
       }
-  
-      // Apply gravity and re-check for matches
-      applyGravity(newGrid);
-      processMatches(newGrid);
-  
-      // Mark buster as used
-      setBusterUsed(true);
+    }
+
+    if (matchesFound) {
+      setGrid([...grid]);
+      setTimeout(() => dropElements(grid), 300);
     } else {
-      alert('You have already used your buster!');
+      // If no matches found, revert the last swap
+      if (lastSwap) {
+        const { fromRow, fromCol, toRow, toCol } = lastSwap;
+        let revertedGrid = [...grid];
+        [revertedGrid[fromRow][fromCol], revertedGrid[toRow][toCol]] = [
+          revertedGrid[toRow][toCol],
+          revertedGrid[fromRow][fromCol],
+        ];
+        setGrid(revertedGrid);
+        setMoves(moves - 1); // Decrement moves
+        setLastSwap(null); // Reset last swap
+      }
+    }
+
+    if (moves <= 0) {
+      setGameOver(true);
     }
   };
-  
+
+  const dropElements = (grid) => {
+    for (let col = 0; col < 8; col++) {
+      for (let row = 7; row >= 0; row--) {
+        if (grid[row][col] === null) {
+          for (let r = row; r > 0; r--) {
+            grid[r][col] = grid[r - 1][col];
+          }
+          grid[0][col] =
+            elementTypes[Math.floor(Math.random() * elementTypes.length)];
+        }
+      }
+    }
+
+    setGrid([...grid]);
+
+    setTimeout(() => checkForMatches(grid), 500);
+  };
+
+  // const handleHint = () => {
+  //   if (hintCount < 2) {
+  //     setHintCount(hintCount + 1);
+  //     alert("Hint used!");
+  //   } else {
+  //     alert("You have used the maximum number of hints.");
+  //   }
+  // };
+  const handleHint = () => {
+    if (hintCount < 2) {
+      for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+          const element = grid[row][col];
+          // Check adjacent elements for a possible match
+          if (
+            row < 7 &&
+            grid[row + 1][col] &&
+            canSwapAndMatch(row, col, row + 1, col)
+          ) {
+            alert(`Hint: Swap (${row}, ${col}) with (${row + 1}, ${col})`);
+            return;
+          }
+          if (
+            col < 7 &&
+            grid[row][col + 1] &&
+            canSwapAndMatch(row, col, row, col + 1)
+          ) {
+            alert(`Hint: Swap (${row}, ${col}) with (${row}, ${col + 1})`);
+            return;
+          }
+        }
+      }
+      alert("No valid hints available!");
+    } else {
+      alert("You have used the maximum number of hints.");
+    }
+  };
 
   return (
-    <div className="flex flex-col items-center justify-center">
-      <h1 className="text-3xl font-bold mb-5">Match Master Game</h1>
-      <h2>Score: {score} | Moves: {moves} | Time: {time}</h2>
-      <Grid grid={grid} setGrid={setGrid} setScore={setScore} setMoves={setMoves} gameMode={gameMode} symbols={symbols} />
-      <button onClick={useHint} className="mt-4 bg-blue-500 text-white px-4 py-2 rounded">Use Hint</button>
-      <button onClick={useBuster} className="mt-4 bg-red-500 text-white px-4 py-2 rounded">Use BUSTER</button>
-    </div>
+    <main className="bg-gray-200 h-screen">
+      <div className=" text-center p-4">
+        <h1 className="text-4xl font-bold mb-4">Match Master</h1>
+      </div>
+      <div className="flex gap-10  items-center justify-center  ">
+        <div className="flex flex-col gap-3">
+          <h2>Select Game Mode</h2>
+          <select
+            value={gameMode}
+            onChange={(e) => setGameMode(e.target.value)}
+          >
+            <option value="moves">Moves</option>
+            <option value="time">Time</option>
+          </select>
+
+          <h2>Select Target Score</h2>
+          <input
+            type="number"
+            value={targetScore}
+            onChange={(e) => setTargetScore(Number(e.target.value))}
+          />
+
+          <button
+            className="bg-blue-600 p-2 rounded-lg text-white font-bold"
+            onClick={startGame}
+          >
+            Start Game
+          </button>
+        </div>
+        <div className="">
+          <div className="text-xl mb-4">Score: {score}</div>
+          <div className="text-xl mb-4">Moves: {moves}</div>
+          <div className="text-xl mb-4">Time Left: {timeLeft}s</div>
+        </div>
+
+        <Grid grid={grid} handleSwap={handleSwap} gameOver={gameOver} />
+
+        <button
+          className={`bg-blue-600 p-2 rounded-lg text-white font-bold ${
+            gameOver || hintCount >= 2 || moves <= 0 || timeLeft <= 0
+              ? "cursor-not-allowed opacity-50"
+              : ""
+          }`}
+          onClick={handleHint}
+          disabled={gameOver || hintCount >= 2 || moves <= 0 || timeLeft <= 0}
+        >
+          Hint ({hintCount}/2)
+        </button>
+      </div>
+    </main>
   );
-}
+};
 
 export default App;
